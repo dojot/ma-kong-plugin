@@ -26,18 +26,15 @@ function _M.printResponse(res, code, response_headers, status, source, sink, res
     if(sink ~= nil) then
         _M.printToFile(0, "sink: " .. sink)
     end
-    if(response_body ~= nil) then
-        table.foreach(response_body, print)
-    end
     print()
 end
 
 function _M.hex_dump(str)
     local len = string.len(str)
     local hex = ""
-    
-    for i = 1, len do  
-        local ord = string.byte( str, i ) 
+
+    for i = 1, len do
+        local ord = string.byte( str, i )
         hex = hex .. string.format( "%02x", ord )
     end
 
@@ -53,7 +50,7 @@ function _M.transform_json_body(conf, body, add_table)
     if parameters == nil and content_length > 0 then
         return false, nil
     end
-    
+
     -- Adds parameters to json
     table.foreach(add_table,
         function(k, v)

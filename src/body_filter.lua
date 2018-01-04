@@ -14,7 +14,10 @@ function string.fromhex(str)
 end
 
 local function is_json_body(content_type)
-  return content_type and find(lower(content_type), "application/json", nil, true)
+    if content_type == nil then
+        return nil
+    end
+    return find(lower(content_type), "application/json", nil, true)
 end
 
 local function getSessionInfo()
@@ -70,7 +73,7 @@ function _M.run(conf)
 
     local chunk, eof = ngx.arg[1], ngx.arg[2]
     if eof then
-        if is_json_body(ngx.header["content-type"]) then
+        if is_json_body(ngx.header["content-type"]) ~= nil and ngx.ctx.buffer ~= nil then
             local response_body_json = json.decode(ngx.ctx.buffer)
             if response_body_json == nil then
                 return
@@ -90,7 +93,9 @@ function _M.run(conf)
             end
         end
     else
-        ngx.ctx.buffer = ngx.ctx.buffer .. chunk
+        if ngx.ctx.buffer ~= nil and chunk ~= nil then
+            ngx.ctx.buffer = ngx.ctx.buffer .. chunk
+        end
         ngx.arg[1] = nil
     end
 end

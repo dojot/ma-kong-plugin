@@ -58,17 +58,17 @@ curl -i -X POST \
     --url http://localhost:8001/apis/kerberos_registerComponent/plugins/ \
     --data 'name=mutualauthentication' \
     --data 'config.kerberos_url="http://kerberos:8080/"'
-    
+
 curl -i -X POST \
     --url http://localhost:8001/apis/kerberos_unregisterComponent/plugins/ \
     --data 'name=mutualauthentication' \
     --data 'config.kerberos_url="http://kerberos:8080/"'
-    
+
 curl -i -X POST \
     --url http://localhost:8001/apis/kerberos_requestAS/plugins/ \
     --data 'name=mutualauthentication' \
     --data 'config.kerberos_url="http://kerberos:8080/"'
-    
+
 curl -i -X POST \
     --url http://localhost:8001/apis/kerberos_requestAP/plugins/ \
     --data 'name=mutualauthentication' \
