@@ -31,10 +31,7 @@ end
 function AuthPlugin:header_filter(conf)
     AuthPlugin.super.header_filter(self)
     -- Removing because content length will change
-    request_uri = ngx.var.request_uri
-    if(string.match(request_uri, "registerComponent")) then
-        ngx.header["content-length"] = nil
-    end
+    ngx.header.content_length = nil
 end
 
 return AuthPlugin
