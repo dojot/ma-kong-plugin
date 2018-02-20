@@ -41,7 +41,7 @@ function _M.loadApp(conf)
         local isOk, request = util.transform_json_body("", component_table)
         if not isOk then
             ngx.log(ngx.ERR, "Failed on transform body request on loadApp")
-            responses.send_HTTP_INTERNAL_SERVER_ERROR()
+            responses.send_HTTP_BAD_REQUEST()
             return
         end
 
@@ -67,12 +67,12 @@ function _M.loadApp(conf)
         end
 
         --todo: can we improve the error handling here? kerberos API does
-        --      not have errors code, so for now we will use an error generic
+        --      not have error codes, so for now we will use a generic error
 
         -- check request response
         if code ~= ngx.HTTP_OK then
             ngx.log(ngx.ERR,
-                    "Failed on load application. Error: ",
+                    "Failed to load application. Error: ",
                     code,
                     ".",
                     status)
@@ -106,7 +106,7 @@ function _M.registerComponent(conf)
 
     local isOk, body = util.transform_json_body(body, component_table)
     if not isOk then
-        ngx.log(ngx.ERR, "Failed on transform body request on registerComponent")
+        ngx.log(ngx.ERR, "Failed to transform body request on registerComponent")
         responses.send_HTTP_INTERNAL_SERVER_ERROR()
         return
     end
@@ -156,18 +156,18 @@ function _M.requestAS(conf)
     }
 
     if not res then
-        ngx.log(ngx.ERR, "Failed on register sesssion for sessionId: ", sessionId,
+        ngx.log(ngx.ERR, "Failed to register sesssion for sessionId: ", sessionId,
                         " transaction id: ", transactionId,
                          " error: ", code)
         return false
     end
 
     --todo: can we improve the error handling here? kerberos API does
-    --      not have errors code, so for now we will use an error generic
+    --      not have error codes, so for now we will use a generic error
 
     -- check request response
     if code ~= ngx.HTTP_OK then
-        ngx.log(ngx.ERR, "Failed on register session. Error: ", code, ".", status)
+        ngx.log(ngx.ERR, "Failed to register session. Error: ", code, ".", status)
         responses.send_HTTP_CONFLICT()
         return
     end

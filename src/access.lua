@@ -81,7 +81,7 @@ local function perform_mutual_authentication(maSessionId, kerberosUrl)
 
     if responseJson["result"]:lower() ~= "kerberos_completed" then
         ngx.log(ngx.ERR, "unexpected kerberos auth state: ", responseJson["result"])
-        return ngx.HTTP_INTERNAL_SERVER_ERROR, "internal error"
+        return ngx.HTTP_BAD_REQUEST, "kerberos handshake is not complete"
     end
 
     return ngx.HTTP_OK, ""
@@ -129,7 +129,7 @@ function _M.run(conf)
 
         local maSessionId = ngx.req.get_headers()[MA_SESSION_ID]
         if not maSessionId then
-            -- Request doesn't MA_SESSION_ID. Return Not Authorized.
+            -- Request doesn't contain  MA_SESSION_ID. Return Not Authorized.
             return responses.send_HTTP_UNAUTHORIZED(
                     "missing \"" .. MA_SESSION_ID .. "\" header's attribute")
         end

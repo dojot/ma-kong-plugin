@@ -18,7 +18,7 @@ function string.fromhex(str)
 end
 
 --- Receives a sessionId (a string with 64 characters) and returns a string
--- with the format used in the Redis 
+-- with the format used in Redis 
 -- example:
 --   sessionId = "03fc33ccc8b74144c123779078bc73bab4917cf55bd64145c1ff7ba38a76ec18"
 --   redis key = "cryptochannel.03fc33ccc8b74144c123779078bc73ba - b4917cf55bd64145c1ff7ba38a76ec18.A"
@@ -37,7 +37,7 @@ end
 --- Retrieves session related parameters to secure channel
 -- @param sessionId 
 -- @return <bool, table>
--- bool: incate if the parameters has been retrieved or not
+-- bool: incates if the parameters have been retrieved or not
 -- table: a table with the following parameters: (the values are just for reference)
 --   - keyServerToComponent : "B0322F59D21D0EC6DF6F8219637B2ED2"
 --   - keyComponentToServer : "40201344A1C9E7B1CFA973FDD78CA42B"
@@ -45,9 +45,9 @@ end
 --   - ivComponentToServer : "E0AAC38719644B69076B7D0D"
 --   - tagLen : 128
 --   - provider : "BC"
--- the table will be availabe only when the bool is true, otherwise
+-- the table will be available only when the first returned value is true, otherwise
 -- a nil value will be returned
--- @usage this functions uses the ngx.ctx variables redisHost and redisPort
+-- @usage this function uses the ngx.ctx variables redisHost and redisPort
 -- make sure it is configured properly before this function be called
 local function retrieve_session_param(sessionId)
 
@@ -77,7 +77,7 @@ local function retrieve_session_param(sessionId)
 end
 
 --- Decrypts a content that came from component and stores in the worker's context
--- (ngx.ctx.sessionParam) the keys to cryptography/decryptography message
+-- (ngx.ctx.sessionParam) the the keys to encrypt/decrypt messages
 -- related to this request
 -- @param sessionId
 -- @param encryptedContent
@@ -114,9 +114,9 @@ function _M.decrypt_from_component(sessionId, encryptedContent)
 end
 
 --- Encrypts a content that came from server. This function uses the key
--- to encrypto previously stored at the worker's context (ngx.ctx.sessionParam),
+-- to encrypt previously stored at the worker's context (ngx.ctx.sessionParam),
 -- so basically the function decrypt_from_component must be called on request
--- step to this function make sense and works properly on reply step
+-- step for this function to make sense and work properly when replying
 -- related to this request
 -- @param plainContent
 -- @return <bool, string>
