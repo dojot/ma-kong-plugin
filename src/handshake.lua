@@ -1,19 +1,24 @@
 local _M = {}
 
-local json = require "json"
+-- 3rd party
+local json = require "cjson"
 local uuid = require "uuid"
 local http = require "socket.http"
-local string_find = string.find
+local responses = require "kong.tools.responses"
 
-local req_read_body = ngx.req.read_body
-local req_get_body_data = ngx.req.get_body_data
-local req_set_body_data = ngx.req.set_body_data
-local req_set_header = ngx.req.set_header
-
-local CONTENT_LENGTH = "content-length"
-local CONTENT_TYPE = "content-type"
-
+-- internal
 local util = require "kong.plugins.mutualauthentication.util"
+
+-- consts
+local CONTENT_LENGTH = "Content-Length"
+local CONTENT_TYPE = "Content-Type"
+
+-- public variables
+_M.ENDPOINT_UNREGISTER_COMPONENT = "/kerberos/unregisterComponent"
+_M.ENDPOINT_REGISTER_COMPONENT = "/kerberos/registerComponent"
+_M.ENDPOINT_REQUEST_AS = "/kerberos/requestAS"
+_M.ENDPOINT_REQUEST_AP = "/kerberos/requestAP"
+_M.ENDPOINT_LOAD_APP = "/kerberos/loadApp"
 
 function unregisterComponent(conf)
 end
@@ -23,6 +28,8 @@ function _M.loadApp(conf)
     local app_key = conf.app_key
 
     if #app_id ~= #app_key then
+        ngx.log(ngx.ERR, "Failed on load application. Number of app_id and app_key does not match")
+        responses.send_HTTP_BAD_REQUEST()
         return
     end
 
@@ -31,26 +38,49 @@ function _M.loadApp(conf)
         component_table["id"] = app_id[i]
         component_table["key"] = app_key[i]
 
-        local request = util.transform_json_body(conf, "", component_table)
+        local isOk, request = util.transform_json_body("", component_table)
+        if not isOk then
+            ngx.log(ngx.ERR, "Failed on transform body request on loadApp")
+            responses.send_HTTP_BAD_REQUEST()
+            return
+        end
 
         local response_body = { }
-        local post_url = conf.kerberos_url -- TODO passar essa variável no request
 
-	    local res, code, response_headers, status = http.request
-	    {
-	        -- TODO Passar url como variável
-	        url = "http://kerberos:8080/kerberosintegration/rest/registry/registerComponent",
+	    local res, code, response_headers, status = http.request {
+	        url = conf.kerberos_url .. "/kerberosintegration/rest/registry/registerComponent",
 	        method = "POST",
-		    headers =
-		    {
-		    ["Content-Type"] = "application/json",
-            ["Content-Length"] = request:len()
+		    headers = {
+		        [CONTENT_TYPE] = "application/json",
+                [CONTENT_LENGTH] = request:len()
 		    },
             source = ltn12.source.string(request),
-            sink = ltn12.sink.table(response_body),
+            sink = ltn12.sink.table(response_body)
 	    }
-	    util.printResponse(res, code, response_headers, status, source, sink, response_body)
-    end
+
+        -- request error checking
+        if (not res) then
+            ngx.log(ngx.ERR, "Failed on load application. Error: ", code)
+            responses.send_HTTP_INTERNAL_SERVER_ERROR(
+                "missing \"" .. MA_SESSION_ID .. "\" header's attribute")
+            return
+        end
+
+        --todo: can we improve the error handling here? kerberos API does
+        --      not have error codes, so for now we will use a generic error
+
+        -- check request response
+        if code ~= ngx.HTTP_OK then
+            ngx.log(ngx.ERR,
+                    "Failed to load application. Error: ",
+                    code,
+                    ".",
+                    status)
+            responses.send_HTTP_CONFLICT()
+            return
+        end
+
+    end -- for
 end
 
 function _M.registerComponent(conf)
@@ -69,28 +99,34 @@ function _M.registerComponent(conf)
     component_table["id"] = appId
     component_table["key"] = appKey
 
-    -- Call req_read_body to read the request body first
-    req_read_body()
-    local body = req_get_body_data()
+    -- Call ngx.req.read_body to read the request body first
+    ngx.req.read_body()
+    local body = ngx.req.get_body_data()
     local content_length = (body and #body) or 0
 
-    body = util.transform_json_body(conf, body, component_table)
+    local isOk, body = util.transform_json_body(body, component_table)
+    if not isOk then
+        ngx.log(ngx.ERR, "Failed to transform body request on registerComponent")
+        responses.send_HTTP_INTERNAL_SERVER_ERROR()
+        return
+    end
 
-    req_set_body_data(body)
-    req_set_header(CONTENT_LENGTH, #body)
+    ngx.req.set_body_data(body)
+    ngx.req.set_header(CONTENT_LENGTH, #body)
 
 end
 
 function _M.requestAS(conf)
 
-    -- Call req_read_body to read the request body first
-    req_read_body()
-    local body = req_get_body_data()
+    -- we need to call ngx.req.read_body to read the request body first
+    ngx.req.read_body()
+    local body = ngx.req.get_body_data()
     local content_length = (body and #body) or 0
     if not body then
+        ngx.log(ngx.ERR, "Empty body on requestAS")
+        responses.send_HTTP_BAD_REQUEST()
         return
     end
-    local body_string = util.hex_dump(body)
 
     -- Generates sessionId
     local sessionId = uuid()
@@ -100,51 +136,65 @@ function _M.requestAS(conf)
     local transactionId = uuid()
     transactionId = string.gsub(transactionId, "-", "")
 
-    -- TODO Stores sessionId and transactionId
+    ngx.log(ngx.DEBUG, "sessionId: ", sessionId)
+    ngx.log(ngx.DEBUG, "transaction id: ", transactionId)
 
     -- Registers session
     local payload = [[ {"sessionId":"]] .. sessionId .. [[","transactionId":"]]
         .. transactionId .. [["} ]]
     local response_body = { }
-    local post_url = conf.kerberos_url -- TODO passar essa variável no request
 
-	local res, code, response_headers, status = http.request
-	{
-	    -- TODO Passar url como variável
-	    url = "http://kerberos:8080/kerberosintegration/rest/registry/registerSession",
+    local res, code, response_headers, status = http.request {
+        url = conf.kerberos_url .. '/kerberosintegration/rest/registry/registerSession',
 	    method = "POST",
-		headers =
-		{
-		["Content-Type"] = "application/json",
-        ["Content-Length"] = payload:len()
+		headers = {
+            [CONTENT_TYPE] = "application/json",
+            [CONTENT_LENGTH] = payload:len()
 		},
         source = ltn12.source.string(payload),
         sink = ltn12.sink.table(response_body),
-	}
-	util.printResponse(res, code, response_headers, status, source, sink, response_body)
+    }
 
-    -- sends requestAS
-    local session_table = {}
-    session_table["sessionId"] = sessionId
-    session_table["transactionId"] = transactionId
+    if not res then
+        ngx.log(ngx.ERR, "Failed to register sesssion for sessionId: ", sessionId,
+                        " transaction id: ", transactionId,
+                         " error: ", code)
+        return false
+    end
 
-    -- Inserts sessionId and TransformationId into original request
-    session_table["request"] = body_string
-    table.foreach(session_table, print)
-    local session_string = json.encode(session_table)
+    --todo: can we improve the error handling here? kerberos API does
+    --      not have error codes, so for now we will use a generic error
 
-    req_set_body_data(session_string)
-    req_set_header(CONTENT_LENGTH, #session_string)
-    ngx.req.set_header("Content-Type", "application/json")
+    -- check request response
+    if code ~= ngx.HTTP_OK then
+        ngx.log(ngx.ERR, "Failed to register session. Error: ", code, ".", status)
+        responses.send_HTTP_CONFLICT()
+        return
+    end
+    
+    -- Inserts sessionId and transactionId into original request
+    local sessionTable = {}
+    sessionTable["sessionId"] = sessionId
+    sessionTable["transactionId"] = transactionId
+    sessionTable["request"] = util.hex_dump(body)
+    local newContent = json.encode(sessionTable)
+
+    -- replace the original request's content with the new one
+    ngx.req.set_body_data(newContent)
+    ngx.req.set_header(CONTENT_LENGTH, #newContent)
+    ngx.req.set_header(CONTENT_TYPE, "application/json")
+
+    return
 end
 
-
 function _M.requestAP(conf)
-    -- Call req_read_body to read the request body first
-    req_read_body()
-    local body = req_get_body_data()
+    -- Call ngx.req.read_body to read the request body first
+    ngx.req.read_body()
+    local body = ngx.req.get_body_data()
     local content_length = (body and #body) or 0
     if not body then
+        ngx.log(ngx.ERR, "Empty body on requestAP")
+        responses.send_HTTP_BAD_REQUEST()
         return
     end
     local body_string = util.hex_dump(body)
@@ -153,17 +203,16 @@ function _M.requestAP(conf)
     local transactionId = string.sub(body_string, 33, 64)
     local request = string.sub(body_string, 65)
 
-    local request_table = {}
-    request_table["sessionId"] = sessionId
-    request_table["transactionId"] = transactionId
-    request_table["request"] = request
-    table.foreach(request_table, print)
+    local requestTable = {}
+    requestTable["sessionId"] = sessionId
+    requestTable["transactionId"] = transactionId
+    requestTable["request"] = request
 
-    local request_string = json.encode(request_table)
+    local newContent = json.encode(requestTable)
 
-    req_set_body_data(request_string)
-    req_set_header(CONTENT_LENGTH, #request_string)
-    ngx.req.set_header("Content-Type", "application/json")
+    ngx.req.set_body_data(newContent)
+    ngx.req.set_header(CONTENT_LENGTH, #newContent)
+    ngx.req.set_header(CONTENT_TYPE, "application/json")
 
 end
 

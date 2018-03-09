@@ -1,33 +1,6 @@
 local _M = {}
 
-local json = require "json"
-
-function _M.printToFile(line, txt)
-	local s = "echo \"Linha " .. line .. " - " .. txt .."\"  >> /tmp/mutualauthentication.log"
-	os.execute(s)
-end
-
-function _M.printResponse(res, code, response_headers, status, source, sink, response_body)
-    if(res ~= nil) then
-        _M.printToFile(0, "res: " .. res)
-    end
-    if(code ~= nil) then
-        _M.printToFile(0, "code: " .. code)
-    end
-    if(response_headers ~= nil) then
-        table.foreach(response_headers, print)
-    end
-    if(status ~= nil) then
-        _M.printToFile(0, "status: " .. status)
-    end
-    if(source ~= nil) then
-        _M.printToFile(0, "source: " .. source)
-    end
-    if(sink ~= nil) then
-        _M.printToFile(0, "sink: " .. sink)
-    end
-    print()
-end
+local json = require "cjson"
 
 function _M.hex_dump(str)
     local len = string.len(str)
@@ -41,13 +14,13 @@ function _M.hex_dump(str)
     return hex
 end
 
-function _M.transform_json_body(conf, body, add_table)
+function _M.transform_json_body(body, add_table)
     local parameters = {}
     local content_length = (body and #body) or 0
     if content_length > 0 then
         parameters = json.decode(body)
     end
-    if parameters == nil and content_length > 0 then
+    if not parameters and content_length > 0 then
         return false, nil
     end
 
@@ -59,7 +32,7 @@ function _M.transform_json_body(conf, body, add_table)
             end
         end
     )
-    return json.encode(parameters)
+    return true, json.encode(parameters)
 end
 
 return _M
