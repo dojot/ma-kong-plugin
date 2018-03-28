@@ -3,12 +3,13 @@ local _M = {}
 -- modules
 local redis = require "resty.redis"
 local jsonHandler = require "cjson"
-local crypto = require "crypto"
 local util = require "kong.plugins.mutualauthentication.util"
+local aes = require "resty.aes"
+local random = require "resty.random"
+local str = require "resty.string"
 
 -- crypto related
-local padding = false
-local cipherType = "aes-128-gcm"
+local ivLength = 12
 
 
 function string.fromhex(str)
@@ -98,13 +99,24 @@ function _M.decrypt_from_component(sessionId, encryptedContent)
 
     -- decrypt the content
     local key = sessionParam["keyComponentToServer"]
-    local iv = sessionParam["ivComponentToServer"]
-
-    -- crypto library requires the data in binary format
+    -- the library requires the data in binary format
     key = key:fromhex()
-    iv = iv:fromhex()
 
-    local decryptedContent = crypto.decrypt.new(cipherType, key, iv, padding):update(encryptedContent)
+    -- extract the iv from begin
+    local ivLen = string.sub(encryptedContent, 1, 1):byte()
+    local iv = string.sub(encryptedContent, 2, ivLen + 1)
+    
+    -- extract the tag from end
+    local tag = string.sub(encryptedContent, -16, -1)
+    
+    local encContent = string.sub(encryptedContent, ivLen + 2, -17)
+
+    local aes128Gcm = assert(aes:new(key,
+                                     nil,
+                                     aes.cipher(128, "gcm"),
+                                     {iv=iv}))
+
+    local decryptedContent = aes128Gcm:decrypt(encContent, tag)
     if not decryptedContent then
         ngx.log(ngx.ERR, "failed to decrypt content related to session id ", sessionId)
         return false, nil
@@ -121,8 +133,8 @@ end
 -- @param plainContent
 -- @return <bool, string>
 -- bool: indicates if the content has beed encrypted successfully
--- string: the content passed by parameter encrypted if the first return value
--- is true, a nil value otherwise
+-- string: if the first return value is true: the combination of iv_length + 
+-- iv + the content passed by parameter encrypted + tag; a nil value otherwise
 function _M.encrypt_from_server(plainContent)
     -- retrieve the session key and iv to encrypt the content from the context
     -- stored previously on request
@@ -134,19 +146,29 @@ function _M.encrypt_from_server(plainContent)
 
     -- encrypt the content
     local key = sessionParam["keyServerToComponent"]
-    local iv = sessionParam["ivServerToComponent"]
+    local iv = nil
+
+    -- attempt to generate 12 bytes of
+    -- cryptographically strong random data for IV
+    while iv == nil do
+        iv = random.bytes(ivLength, true)
+    end
 
      -- crypto library requires the data in binary format
      key = key:fromhex()
-     iv = iv:fromhex()
 
-    local encryptedContent = crypto.encrypt.new(cipherType, key, iv, padding):update(plainContent)
+    local aes128Gcm = assert(aes:new(key,
+                                     nil,
+                                     aes.cipher(128, "gcm"),
+                                     {iv=iv}))
+
+    local encryptedContent, tag = aes128Gcm:encrypt(plainContent)
     if not encryptedContent then
         ngx.log(ngx.ERR, "failed to encrypt content related to session id ", sessionId)
         return false, nil
     end
-    
-    return true, encryptedContent
+
+    return true, string.char(#iv) .. iv .. encryptedContent .. tag
 end
 
 return _M
